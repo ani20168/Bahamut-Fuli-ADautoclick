@@ -81,21 +81,22 @@ chrome_options = Options()
 chrome_options.add_argument(f"user-agent={USER_AGENT}")
 chrome_options.add_argument("--mute-audio")
 browser = webdriver.Chrome(options=chrome_options)
+#等待秒數設定
+wait = WebDriverWait(browser, 5)
 
 # 讀取配置檔
 USERNAME, PASSWORD, url_list = read_config()
-browser.get(url)
+browser.get(url_list[0])
 
 # 嘗試載入cookie
 try:
     load_cookies(browser, cookie_file_path)
-    browser.get(url)
+    browser.get(url_list[0])
 except FileNotFoundError:
     pass
 
 
-#等待秒數設定
-wait = WebDriverWait(browser, 5)
+
 
 #登入嘗試
 try:
@@ -119,40 +120,38 @@ try:
 except (EC.NoSuchElementException, TimeoutException):
     pass  # 已經登入的狀況
 
+for url in url_list:
+    ad_watched_count = 0
 
-ad_watched_count = 0
+    while True:
+        result = click_ad_button()
+        if result is False:
+            break
 
+        # 切换到iframe
+        iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[id*="google_ads_iframe_"]')))
+        browser.switch_to.frame(iframe)
 
+        #如果出現有聲廣告提醒，則自動按下
+        try:
+            confirm_button = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'rewardResumebutton')))
+            # 使用JS模擬按下
+            browser.execute_script("arguments[0].click();", confirm_button)
+        except (EC.NoSuchElementException,TimeoutException):
+            pass
 
-while True:
-    result = click_ad_button()
-    if result is False:
-        break
-
-    # 切换到iframe
-    iframe = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'iframe[id*="google_ads_iframe_"]')))
-    browser.switch_to.frame(iframe)
-
-    #如果出現有聲廣告提醒，則自動按下
-    try:
-        confirm_button = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'rewardResumebutton')))
+        #等待廣告結束
+        time.sleep(30)
+        close_button_selector = 'img[src="https://googleads.g.doubleclick.net/pagead/images/gmob/close-circle-30x30.png"], div#close_button > div#close_button_icon'
+        close_button = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, close_button_selector)))
         # 使用JS模擬按下
-        browser.execute_script("arguments[0].click();", confirm_button)
-    except (EC.NoSuchElementException,TimeoutException):
-        pass
+        browser.execute_script("arguments[0].click();", close_button)
 
-    #等待廣告結束
-    time.sleep(30)
-    close_button_selector = 'img[src="https://googleads.g.doubleclick.net/pagead/images/gmob/close-circle-30x30.png"], div#close_button > div#close_button_icon'
-    close_button = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, close_button_selector)))
-    # 使用JS模擬按下
-    browser.execute_script("arguments[0].click();", close_button)
+        # 在關閉按鈕後進行廣告計數
+        ad_watched_count += 1
+        print(f"已看完{ad_watched_count}次廣告。")
 
-    # 在關閉按鈕後進行廣告計數
-    ad_watched_count += 1
-    print(f"已看完{ad_watched_count}次廣告。")
-
-    # 切換回主畫面
-    browser.switch_to.default_content()
-    time.sleep(3)
-    browser.get(url)
+        # 切換回主畫面
+        browser.switch_to.default_content()
+        time.sleep(3)
+        browser.get(url)
